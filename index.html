@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Firebase:v9:Chatアプリ</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif;
+    background-color: #f5f5f5;
+    margin: 0;
+    padding: 16px;
+  }
+
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  #output {
+    flex: 1;
+    overflow: auto;
+    background-color: #e5e5ea;
+    padding: 8px;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+
+  .message-row {
+    display: flex;
+    margin-bottom: 8px;
+  }
+
+  .my-row {
+    justify-content: flex-end;
+  }
+
+  .other-row {
+    justify-content: flex-start;
+  }
+
+  .message-bubble {
+    max-width: 70%;
+    padding: 8px 10px;
+    border-radius: 16px;
+    background-color: #ffffff;
+    position: relative;
+    word-break: break-word;
+    box-sizing: border-box;
+  }
+
+  .my-row .message-bubble {
+    background-color: #0b93f6;
+    color: #ffffff;
+    border-bottom-right-radius: 0;
+  }
+
+  .other-row .message-bubble {
+    background-color: #ffffff;
+    color: #000000;
+    border-bottom-left-radius: 0;
+  }
+
+  .message-name {
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 2px;
+  }
+
+  .message-text {
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+
+  .message-meta {
+    font-size: 10px;
+    text-align: right;
+    margin-top: 2px;
+    opacity: 0.7;
+  }
+
+  .chat-container {
+    display: flex;
+    gap: 16px;
+    height: calc(100vh - 32px);
+    box-sizing: border-box;
+  }
+
+  .chat-list {
+    width: 30%;
+    max-width: 260px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-list-header {
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid #eee;
+    background-color: #f9f9f9;
+  }
+
+  .chat-list-body {
+    flex: 1;
+    overflow: auto;
+  }
+
+  .chat-list-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+  }
+
+  .chat-list-item:hover {
+    background-color: #f5f5f5;
+  }
+
+  .chat-list-item.active {
+    background-color: #e5f3ff;
+  }
+
+  .chat-list-name {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .chat-list-preview {
+    font-size: 12px;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-list-time {
+    font-size: 10px;
+    text-align: right;
+    opacity: 0.6;
+    margin-top: 2px;
+  }
+
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chat-input-area {
+    margin-bottom: 8px;
+  }
+
+  .chat-input-row {
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- コンテンツ表示画面 -->
+
+<div class="chat-container">
+  <div class="chat-list">
+    <div class="chat-list-header">トーク一覧</div>
+    <div id="chatList" class="chat-list-body"></div>
+  </div>
+  <div class="chat-main">
+    <div class="chat-input-area">
+      <div class="chat-input-row"> 名前：<input type="text" id="uname"> </div>
+      <div class="chat-input-row">
+        <textarea id="text" cols="30" rows="5"></textarea>
+        <button id="send">送信</button>
+      </div>
+    </div>
+    <div id="output"></div>
+  </div>
+</div>
+<!--/ コンテンツ表示画面 -->
+
+
+
+<!-- JQuery -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<!-- JQuery -->
+
+
+<!--** 以下Firebase **-->
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getDatabase, ref, push, set, onChildAdded }
+    from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyA1A1hAfeg0loZ-WzPXoH4eIE7RSEfRnhA",
+    authDomain: "line-chat-pcr.firebaseapp.com",
+    databaseURL: "https://line-chat-pcr-default-rtdb.firebaseio.com",
+    projectId: "line-chat-pcr",
+    storageBucket: "line-chat-pcr.firebasestorage.app",
+    messagingSenderId: "951386297444",
+    appId: "1:951386297444:web:7a343844b57f2c8144fb71"
+};
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app); //RealtimeDBに接続
+  const dbRef = ref(db, "chat"); //RealtimeDB内の"chat"を使う
+
+  // すべてのメッセージを保持する配列と、現在選択中のトーク名
+  let allMessages = [];
+  let currentTalkName = null;
+
+  // 送信処理を関数化
+  function sendMessage() {
+    const inputName = $("#uname").val().trim();
+    const text = $("#text").val().trim();
+
+    // テキストが空なら送信しない
+    if (!text) return;
+
+    let uname = "";
+
+    // 名前欄が入力されていれば、それを優先（新しい相手への送信もここ）
+    if (inputName) {
+      uname = inputName;
+      currentTalkName = uname; // 新しい名前で送信した場合は現在トークに設定
+    }
+    // 名前欄が空で、左側でトークを選択している場合
+    else if (currentTalkName) {
+      uname = currentTalkName;
+    }
+    // どちらもない → 新規トークなのに名前なしなので送信不可
+    else {
+      return;
+    }
+
+    const msg = {
+      uname: uname,
+      text: text,
+      time: Date.now()
+    };
+
+    const newPostRef = push(dbRef);
+    set(newPostRef, msg);
+
+    $("#text").val("").focus();
+
+    // 左側のリストを選択状態に更新
+    highlightListItem(currentTalkName);
+  }
+
+  // 送信ボタン
+  $("#send").on("click", function () {
+    sendMessage();
+  });
+
+  // Alt（Windows）+ Enter / Option（Mac）+ Enter で送信、Enter は改行
+  $("#text").on("keydown", function (e) {
+    // Alt/Option + Enter で送信
+    if (e.altKey && e.key === "Enter") {
+      e.preventDefault();
+      sendMessage();
+      return;
+    }
+
+    // Enter 単体は改行としてそのまま動かす
+  });
+
+  // メッセージ描画関数（LINE風）: 値オブジェクト v から描画
+  function renderMessageFromValue(v) {
+    const currentName = $("#uname").val();
+    const isMine = v.uname === currentName;
+
+    let timeStr = "";
+    if (v.time) {
+      const d = new Date(v.time);
+      timeStr = d.toLocaleTimeString("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    const $row = $("<div>").addClass("message-row").addClass(isMine ? "my-row" : "other-row");
+    const $bubble = $("<div>").addClass("message-bubble");
+
+    const $name = $("<div>").addClass("message-name").text(v.uname);
+    const $text = $("<div>").addClass("message-text").text(v.text);
+    const $meta = $("<div>").addClass("message-meta").text(timeStr);
+
+    $bubble.append($name).append($text).append($meta);
+    $row.append($bubble);
+    $("#output").append($row);
+
+    // 一番下までスクロール
+    const outputEl = $("#output").get(0);
+    if (outputEl) {
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+  }
+
+  // 左側のトーク一覧（名前ごとに1件）を描画・更新
+  function renderListItem(v) {
+    const nameKey = v.uname || "unknown";
+
+    let timeStr = "";
+    if (v.time) {
+      const d = new Date(v.time);
+      timeStr = d.toLocaleTimeString("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    let preview = v.text || "";
+    if (preview.length > 20) {
+      preview = preview.slice(0, 20) + "…";
+    }
+
+    // 既に同じ名前のトークがあるか？
+    let $existing = $(`.chat-list-item[data-name="${nameKey}"]`);
+
+    if ($existing.length) {
+      // 既存アイテムを更新
+      $existing.find(".chat-list-name").text(nameKey);
+      $existing.find(".chat-list-preview").text(preview);
+      $existing.find(".chat-list-time").text(timeStr);
+      // 最新メッセージなので一番上に移動
+      $existing.prependTo("#chatList");
+    } else {
+      // 新規トーク作成
+      const $item = $("<div>")
+        .addClass("chat-list-item")
+        .attr("data-name", nameKey);
+
+      const $name = $("<div>").addClass("chat-list-name").text(nameKey);
+      const $preview = $("<div>").addClass("chat-list-preview").text(preview);
+      const $time = $("<div>").addClass("chat-list-time").text(timeStr);
+
+      $item.append($name).append($preview).append($time);
+      $("#chatList").prepend($item); // 新しいトークは上に
+    }
+
+    const listEl = $("#chatList").get(0);
+    if (listEl) {
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+  }
+
+  // 選択中のトークをハイライト
+  function highlightListItem(name) {
+    $(".chat-list-item").removeClass("active");
+    $(`.chat-list-item[data-name="${name}"]`).addClass("active");
+  }
+
+  // 左のトークリストをクリックしたとき、その相手とのトークのみ右側に表示
+  $(document).on("click", ".chat-list-item", function () {
+    const name = $(this).data("name");
+    currentTalkName = name;
+    highlightListItem(name);
+
+    // 右側のトーク画面を一旦クリア
+    $("#output").empty();
+
+    // その名前のメッセージだけ再描画
+    allMessages.forEach(v => {
+      if (v.uname === currentTalkName) {
+        renderMessageFromValue(v);
+      }
+    });
+  });
+
+  // 新しいメッセージが追加されたら表示（右側のトーク画面＆左側の一覧）
+  onChildAdded(dbRef, function (data) {
+    const v = data.val();
+
+    // 全メッセージ配列に追加
+    allMessages.push(v);
+
+    // 左リスト更新（同じ名前なら1件にまとめて最新状態に）
+    renderListItem(v);
+
+    // 最初のメッセージなら、その人をデフォルト選択
+    if (!currentTalkName) {
+      currentTalkName = v.uname;
+      highlightListItem(currentTalkName);
+    }
+
+    // 現在選択中のトークの相手のメッセージだけ右側に表示
+    if (v.uname === currentTalkName) {
+      renderMessageFromValue(v);
+    }
+  });
+</script>
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
