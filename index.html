@@ -157,6 +157,61 @@
   .chat-input-row {
     margin-bottom: 4px;
   }
+
+  .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .chat-header-title {
+    font-size: 14px;
+  }
+
+  .chat-header-actions button {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+  }
+
+  .chat-header-actions button:hover {
+    opacity: 0.8;
+  }
+
+  .read-icon {
+    margin-left: 4px;
+    font-size: 10px;
+    color: #0b93f6;
+  }
+
+  .stamp-image {
+    max-width: 120px;
+    display: block;
+    border-radius: 8px;
+  }
+
+  .chat-stamp-row {
+    margin-top: 4px;
+  }
+
+  .stamp-btn {
+    font-size: 12px;
+    padding: 3px 6px;
+    margin-right: 4px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background-color: #fff;
+    cursor: pointer;
+  }
+
+  .stamp-btn:hover {
+    background-color: #f5f5f5;
+  }
 </style>
 </head>
 <body>
@@ -169,11 +224,22 @@
     <div id="chatList" class="chat-list-body"></div>
   </div>
   <div class="chat-main">
+    <div class="chat-header">
+      <div id="currentTalkName" class="chat-header-title">トークを選択してください</div>
+      <div class="chat-header-actions">
+        <button id="deleteTalk">トーク削除</button>
+      </div>
+    </div>
     <div class="chat-input-area">
       <div class="chat-input-row"> 名前：<input type="text" id="uname"> </div>
       <div class="chat-input-row">
         <textarea id="text" cols="30" rows="5"></textarea>
         <button id="send">送信</button>
+      </div>
+      <div class="chat-stamp-row">
+        <!-- 簡易スタンプボタン（サンプル画像URLを使用） -->
+        <button class="stamp-btn" data-url="https://placehold.co/100x100?text=OK">OKスタンプ</button>
+        <button class="stamp-btn" data-url="https://placehold.co/100x100?text=LOL">LOLスタンプ</button>
       </div>
     </div>
     <div id="output"></div>
@@ -192,7 +258,7 @@
 <script type="module">
   // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-  import { getDatabase, ref, push, set, onChildAdded }
+  import { getDatabase, ref, push, set, onChildAdded, remove }
     from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
   // TODO: Add SDKs for Firebase products that you want to use
   // https://firebase.google.com/docs/web/setup#available-libraries
@@ -216,6 +282,16 @@ const firebaseConfig = {
   // すべてのメッセージを保持する配列と、現在選択中のトーク名
   let allMessages = [];
   let currentTalkName = null;
+
+  // 現在のトーク相手のヘッダー表示を更新
+  function updateCurrentTalkHeader() {
+    const name = currentTalkName;
+    if (name) {
+      $("#currentTalkName").text(`現在のトーク相手：${name}`);
+    } else {
+      $("#currentTalkName").text("トークを選択してください");
+    }
+  }
 
   // 送信処理を関数化
   function sendMessage() {
@@ -244,6 +320,7 @@ const firebaseConfig = {
     const msg = {
       uname: uname,
       text: text,
+      type: "text",
       time: Date.now()
     };
 
@@ -252,8 +329,9 @@ const firebaseConfig = {
 
     $("#text").val("").focus();
 
-    // 左側のリストを選択状態に更新
+    // 左側のリストを選択状態に更新＆ヘッダー更新
     highlightListItem(currentTalkName);
+    updateCurrentTalkHeader();
   }
 
   // 送信ボタン
@@ -271,6 +349,43 @@ const firebaseConfig = {
     }
 
     // Enter 単体は改行としてそのまま動かす
+  });
+
+  // スタンプ送信用関数
+  function sendStamp(url) {
+    if (!url) return;
+
+    const inputName = $("#uname").val().trim();
+    let uname = "";
+
+    if (inputName) {
+      uname = inputName;
+      currentTalkName = uname;
+    } else if (currentTalkName) {
+      uname = currentTalkName;
+    } else {
+      return;
+    }
+
+    const msg = {
+      uname: uname,
+      text: "",
+      type: "stamp",
+      stampUrl: url,
+      time: Date.now()
+    };
+
+    const newPostRef = push(dbRef);
+    set(newPostRef, msg);
+
+    highlightListItem(currentTalkName);
+    updateCurrentTalkHeader();
+  }
+
+  // スタンプボタンクリック
+  $(document).on("click", ".stamp-btn", function () {
+    const url = $(this).data("url");
+    sendStamp(url);
   });
 
   // メッセージ描画関数（LINE風）: 値オブジェクト v から描画
@@ -291,14 +406,25 @@ const firebaseConfig = {
     const $bubble = $("<div>").addClass("message-bubble");
 
     const $name = $("<div>").addClass("message-name").text(v.uname);
-    const $text = $("<div>").addClass("message-text").text(v.text);
-    const $meta = $("<div>").addClass("message-meta").text(timeStr);
 
-    $bubble.append($name).append($text).append($meta);
+    let $content;
+    if (v.type === "stamp" && v.stampUrl) {
+      const $img = $("<img>").addClass("stamp-image").attr("src", v.stampUrl).attr("alt", "stamp");
+      $content = $("<div>").addClass("message-text").append($img);
+    } else {
+      $content = $("<div>").addClass("message-text").text(v.text);
+    }
+
+    const $meta = $("<div>").addClass("message-meta").text(timeStr);
+    if (isMine) {
+      const $read = $("<span>").addClass("read-icon").text("既読");
+      $meta.append(" ").append($read);
+    }
+
+    $bubble.append($name).append($content).append($meta);
     $row.append($bubble);
     $("#output").append($row);
 
-    // 一番下までスクロール
     const outputEl = $("#output").get(0);
     if (outputEl) {
       outputEl.scrollTop = outputEl.scrollHeight;
@@ -318,9 +444,14 @@ const firebaseConfig = {
       });
     }
 
-    let preview = v.text || "";
-    if (preview.length > 20) {
-      preview = preview.slice(0, 20) + "…";
+    let preview = "";
+    if (v.type === "stamp") {
+      preview = "[スタンプ]";
+    } else {
+      preview = v.text || "";
+      if (preview.length > 20) {
+        preview = preview.slice(0, 20) + "…";
+      }
     }
 
     // 既に同じ名前のトークがあるか？
@@ -364,6 +495,7 @@ const firebaseConfig = {
     const name = $(this).data("name");
     currentTalkName = name;
     highlightListItem(name);
+    updateCurrentTalkHeader();
 
     // 右側のトーク画面を一旦クリア
     $("#output").empty();
@@ -379,6 +511,7 @@ const firebaseConfig = {
   // 新しいメッセージが追加されたら表示（右側のトーク画面＆左側の一覧）
   onChildAdded(dbRef, function (data) {
     const v = data.val();
+    v._key = data.key;
 
     // 全メッセージ配列に追加
     allMessages.push(v);
@@ -390,12 +523,42 @@ const firebaseConfig = {
     if (!currentTalkName) {
       currentTalkName = v.uname;
       highlightListItem(currentTalkName);
+      updateCurrentTalkHeader();
     }
 
     // 現在選択中のトークの相手のメッセージだけ右側に表示
     if (v.uname === currentTalkName) {
       renderMessageFromValue(v);
     }
+  });
+
+  // 現在のトーク履歴を削除
+  $("#deleteTalk").on("click", function () {
+    if (!currentTalkName) return;
+
+    const target = currentTalkName;
+
+    // Firebase から該当ユーザーのメッセージを削除
+    const remaining = [];
+    allMessages.forEach(v => {
+      if (v.uname === target && v._key) {
+        const msgRef = ref(db, `chat/${v._key}`);
+        remove(msgRef);
+      } else {
+        remaining.push(v);
+      }
+    });
+    allMessages = remaining;
+
+    // 左側リストから削除
+    $(`.chat-list-item[data-name="${target}"]`).remove();
+
+    // 右側画面クリア
+    $("#output").empty();
+
+    // 現在トークをリセット
+    currentTalkName = null;
+    updateCurrentTalkHeader();
   });
 </script>
 
