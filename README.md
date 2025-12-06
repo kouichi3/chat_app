@@ -5,7 +5,7 @@
 ラインを真似して作ってみた
 
 ③アプリのデプロイURL
-https://kouichi3.github.io/memo/
+https://kouichi3.github.io/chat_app/
 
 ④アプリのログイン用IDまたはPassword（ある場合）
 ID: なし
